@@ -22,6 +22,12 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [supportedLanguages, setSupportedLanguages] = useState({})
   const [defaultLanguage, setDefaultLanguage] = useState('en')
 
+  const hasLocalStorage = (): boolean => {
+    return typeof localStorage !== 'undefined'
+      && typeof localStorage.getItem === 'function'
+      && typeof localStorage.setItem === 'function';
+  };
+
   // Helper function to detect browser language
   const detectBrowserLanguage = (): string => {
     try {
@@ -104,7 +110,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
         try {
           // Only access localStorage in the browser
           let storedLanguage;
-          if (typeof window !== 'undefined') {
+          if (hasLocalStorage()) {
             storedLanguage = localStorage.getItem('language');
     
             // If no language is stored, detect browser language
@@ -162,7 +168,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       setMessages(langMessages);
 
       // Store in localStorage (only in browser)
-      if (typeof window !== 'undefined') {
+      if (hasLocalStorage()) {
         localStorage.setItem('language', validLanguage);
       }
 

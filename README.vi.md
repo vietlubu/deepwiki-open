@@ -61,6 +61,10 @@ GOOGLE_API_KEY=your_google_api_key
 OPENAI_API_KEY=your_openai_api_key
 # Optional: Thêm OpenRouter API key nếu bạn muốn OpenRouter models
 OPENROUTER_API_KEY=your_openrouter_api_key
+# Optional: Chọn provider/model mặc định khi runtime
+# Nếu không set, hệ thống sẽ dùng default trong api/config/generator.json
+DEEPWIKI_DEFAULT_PROVIDER=openai
+DEEPWIKI_DEFAULT_MODEL=gpt-5.1-codex-mini
 ```
 
 #### Bước 2: Bắt đầu với Backend
@@ -70,7 +74,7 @@ OPENROUTER_API_KEY=your_openrouter_api_key
 python -m pip install poetry==2.0.1 && poetry install -C api
 
 # Chạy API server
-python -m api.main
+poetry -C api run python -m api.main
 ```
 
 #### Bước 3: Bắt đầu với Frontend
@@ -86,6 +90,8 @@ npm run dev
 # Hoặc
 yarn dev
 ```
+
+Mở thêm 1 terminal khác để chạy frontend, giúp backend và frontend hoạt động đồng thời.
 
 #### Bước 4: Dùng DeepWiki!
 
@@ -420,4 +426,3 @@ Dự án này được cấp phép theo Giấy phép MIT - xem file [LICENSE](LI
 ## ⭐ Lịch sử
 
 [![Biểu đồ lịch sử](https://api.star-history.com/svg?repos=AsyncFuncAI/deepwiki-open&type=Date)](https://star-history.com/#AsyncFuncAI/deepwiki-open&Date)
-

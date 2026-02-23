@@ -50,6 +50,8 @@ WIKI_AUTH_CODE = os.environ.get('DEEPWIKI_AUTH_CODE', '')
 
 # Embedder settings
 EMBEDDER_TYPE = os.environ.get('DEEPWIKI_EMBEDDER_TYPE', 'openai').lower()
+DEFAULT_PROVIDER_OVERRIDE = os.environ.get('DEEPWIKI_DEFAULT_PROVIDER', '').strip().lower()
+DEFAULT_MODEL_OVERRIDE = os.environ.get('DEEPWIKI_DEFAULT_MODEL', '').strip()
 
 # Get configuration directory from environment variable, or use default if not set
 CONFIG_DIR = os.environ.get('DEEPWIKI_CONFIG_DIR', None)
@@ -123,6 +125,45 @@ def load_json_config(filename):
 # Load generator model configuration
 def load_generator_config():
     generator_config = load_json_config("generator.json")
+
+    providers = generator_config.get("providers", {})
+    configured_default_provider = generator_config.get("default_provider", "google")
+
+    # Optional runtime override for default provider/model.
+    # If env vars are absent, we keep default_model/default_provider from generator.json.
+    effective_default_provider = configured_default_provider
+    if DEFAULT_PROVIDER_OVERRIDE:
+        if DEFAULT_PROVIDER_OVERRIDE in providers:
+            effective_default_provider = DEFAULT_PROVIDER_OVERRIDE
+            generator_config["default_provider"] = effective_default_provider
+        else:
+            logger.warning(
+                f"DEEPWIKI_DEFAULT_PROVIDER='{DEFAULT_PROVIDER_OVERRIDE}' is not configured. "
+                f"Using '{configured_default_provider}'."
+            )
+
+    if DEFAULT_MODEL_OVERRIDE:
+        provider_config = providers.get(effective_default_provider)
+        if provider_config:
+            models = provider_config.get("models", {})
+            if DEFAULT_MODEL_OVERRIDE in models:
+                provider_config["default_model"] = DEFAULT_MODEL_OVERRIDE
+            elif provider_config.get("supportsCustomModel", False):
+                # Use conservative defaults for custom runtime models instead of copying
+                # potentially incompatible params (e.g. reasoning_effort levels).
+                models[DEFAULT_MODEL_OVERRIDE] = {}
+                provider_config["models"] = models
+                provider_config["default_model"] = DEFAULT_MODEL_OVERRIDE
+                logger.info(
+                    f"Using custom default model '{DEFAULT_MODEL_OVERRIDE}' for provider "
+                    f"'{effective_default_provider}' via DEEPWIKI_DEFAULT_MODEL."
+                )
+            else:
+                logger.warning(
+                    f"DEEPWIKI_DEFAULT_MODEL='{DEFAULT_MODEL_OVERRIDE}' is not available under "
+                    f"provider '{effective_default_provider}' and custom models are disabled. "
+                    "Keeping configured default_model."
+                )
 
     # Add client classes to each provider
     if "providers" in generator_config:

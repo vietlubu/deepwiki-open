@@ -89,6 +89,9 @@ AZURE_OPENAI_ENDPOINT=your_azure_openai_endpoint
 AZURE_OPENAI_VERSION=your_azure_openai_version
 # Optional: Add Ollama host if not local. default: http://localhost:11434
 OLLAMA_HOST=your_ollama_host
+# Optional: Runtime default model selection (falls back to generator.json if unset)
+DEEPWIKI_DEFAULT_PROVIDER=openai
+DEEPWIKI_DEFAULT_MODEL=gpt-5.1-codex-mini
 ```
 
 #### Step 2: Start the Backend
@@ -98,7 +101,7 @@ OLLAMA_HOST=your_ollama_host
 python -m pip install poetry==2.0.1 && poetry install -C api
 
 # Start the API server
-python -m api.main
+poetry -C api run python -m api.main
 ```
 
 #### Step 3: Start the Frontend
@@ -114,6 +117,8 @@ npm run dev
 # or
 yarn dev
 ```
+
+Open another terminal for the frontend, so backend and frontend can run at the same time.
 
 #### Step 4: Use DeepWiki!
 

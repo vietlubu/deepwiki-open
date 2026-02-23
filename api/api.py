@@ -132,6 +132,7 @@ class Provider(BaseModel):
     id: str = Field(..., description="Provider identifier")
     name: str = Field(..., description="Display name for the provider")
     models: List[Model] = Field(..., description="List of available models for this provider")
+    defaultModel: Optional[str] = Field(None, description="Default model ID for this provider")
     supportsCustomModel: Optional[bool] = Field(False, description="Whether this provider supports custom models")
 
 class ModelConfig(BaseModel):
@@ -195,6 +196,7 @@ async def get_model_config():
                 Provider(
                     id=provider_id,
                     name=f"{provider_id.capitalize()}",
+                    defaultModel=provider_config.get("default_model"),
                     supportsCustomModel=provider_config.get("supportsCustomModel", False),
                     models=models
                 )
@@ -215,6 +217,7 @@ async def get_model_config():
                 Provider(
                     id="google",
                     name="Google",
+                    defaultModel="gemini-2.5-flash",
                     supportsCustomModel=True,
                     models=[
                         Model(id="gemini-2.5-flash", name="Gemini 2.5 Flash")

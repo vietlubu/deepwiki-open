@@ -78,9 +78,15 @@ export default function Home() {
   const [repositoryInput, setRepositoryInput] = useState('https://github.com/AsyncFuncAI/deepwiki-open');
 
   const REPO_CONFIG_CACHE_KEY = 'deepwikiRepoConfigCache';
+  const hasLocalStorage = (): boolean => {
+    return typeof localStorage !== 'undefined'
+      && typeof localStorage.getItem === 'function'
+      && typeof localStorage.setItem === 'function';
+  };
 
   const loadConfigFromCache = (repoUrl: string) => {
     if (!repoUrl) return;
+    if (!hasLocalStorage()) return;
     try {
       const cachedConfigs = localStorage.getItem(REPO_CONFIG_CACHE_KEY);
       if (cachedConfigs) {
@@ -308,7 +314,7 @@ export default function Home() {
 
     try {
       const currentRepoUrl = repositoryInput.trim();
-      if (currentRepoUrl) {
+      if (currentRepoUrl && hasLocalStorage()) {
         const existingConfigs = JSON.parse(localStorage.getItem(REPO_CONFIG_CACHE_KEY) || '{}');
         const configToSave = {
           selectedLanguage,

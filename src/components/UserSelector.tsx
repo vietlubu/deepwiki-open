@@ -13,6 +13,7 @@ interface Provider {
   id: string;
   name: string;
   models: Model[];
+  defaultModel?: string;
   supportsCustomModel?: boolean;
 }
 
@@ -20,6 +21,13 @@ interface ModelConfig {
   providers: Provider[];
   defaultProvider: string;
 }
+
+const getProviderDefaultModel = (providerOption?: Provider): string => {
+  if (!providerOption) return '';
+  if (providerOption.defaultModel) return providerOption.defaultModel;
+  if (providerOption.models.length > 0) return providerOption.models[0].id;
+  return '';
+};
 
 interface ModelSelectorProps {
   provider: string;
@@ -101,8 +109,9 @@ export default function UserSelector({
 
           // Find the default provider and set its default model
           const selectedProvider = data.providers.find((p: Provider) => p.id === data.defaultProvider);
-          if (selectedProvider && selectedProvider.models.length > 0) {
-            setModel(selectedProvider.models[0].id);
+          const defaultModel = getProviderDefaultModel(selectedProvider);
+          if (defaultModel) {
+            setModel(defaultModel);
           }
         }
       } catch (err) {
@@ -126,8 +135,9 @@ export default function UserSelector({
       // Set default model for the selected provider
       if (modelConfig) {
         const selectedProvider = modelConfig.providers.find((p: Provider) => p.id === newProvider);
-        if (selectedProvider && selectedProvider.models.length > 0) {
-          setModel(selectedProvider.models[0].id);
+        const defaultModel = getProviderDefaultModel(selectedProvider);
+        if (defaultModel) {
+          setModel(defaultModel);
         }
       }
     }, 10);

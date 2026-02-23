@@ -92,6 +92,11 @@ const getCacheKey = (owner: string, repo: string, repoType: string, language: st
   return `deepwiki_cache_${repoType}_${owner}_${repo}_${language}_${isComprehensive ? 'comprehensive' : 'concise'}`;
 };
 
+const hasLocalStorage = (): boolean => {
+  return typeof localStorage !== 'undefined'
+    && typeof localStorage.removeItem === 'function';
+};
+
 // Helper function to add tokens and other parameters to request body
 const addTokensToRequestBody = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1654,7 +1659,9 @@ IMPORTANT:
 
     // Clear the localStorage cache (if any remnants or if it was used before this change)
     const localStorageCacheKey = getCacheKey(effectiveRepoInfo.owner, effectiveRepoInfo.repo, effectiveRepoInfo.type, language, isComprehensiveView);
-    localStorage.removeItem(localStorageCacheKey);
+    if (hasLocalStorage()) {
+      localStorage.removeItem(localStorageCacheKey);
+    }
 
     // Reset cache loaded flag
     cacheLoadedSuccessfully.current = false;

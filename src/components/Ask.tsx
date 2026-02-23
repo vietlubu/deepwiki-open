@@ -18,6 +18,7 @@ interface Provider {
   id: string;
   name: string;
   models: Model[];
+  defaultModel?: string;
   supportsCustomModel?: boolean;
 }
 
@@ -42,6 +43,13 @@ interface AskProps {
   language?: string;
   onRef?: (ref: { clearConversation: () => void }) => void;
 }
+
+const getProviderDefaultModel = (providerOption?: Provider): string => {
+  if (!providerOption) return '';
+  if (providerOption.defaultModel) return providerOption.defaultModel;
+  if (providerOption.models.length > 0) return providerOption.models[0].id;
+  return '';
+};
 
 const Ask: React.FC<AskProps> = ({
   repoInfo,
@@ -130,8 +138,9 @@ const Ask: React.FC<AskProps> = ({
 
           // Find the default provider and set its default model
           const selectedProvider = data.providers.find((p:Provider) => p.id === data.defaultProvider);
-          if (selectedProvider && selectedProvider.models.length > 0) {
-            setSelectedModel(selectedProvider.models[0].id);
+          const defaultModel = getProviderDefaultModel(selectedProvider);
+          if (defaultModel) {
+            setSelectedModel(defaultModel);
           }
         } else {
           setSelectedProvider(providerRef.current);

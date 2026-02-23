@@ -468,7 +468,7 @@ This file contains...
 
             model = OpenRouterClient()
             model_kwargs = {
-                "model": request.model,
+                "model": request.model or model_config["model"],
                 "stream": True,
                 "temperature": model_config["temperature"]
             }
@@ -491,14 +491,11 @@ This file contains...
 
             # Initialize Openai client
             model = OpenAIClient()
-            model_kwargs = {
-                "model": request.model,
-                "stream": True,
-                "temperature": model_config["temperature"]
-            }
-            # Only add top_p if it exists in the model config
-            if "top_p" in model_config:
-                model_kwargs["top_p"] = model_config["top_p"]
+            model_kwargs = {"model": request.model or model_config["model"], "stream": True}
+            # Pass through all configured OpenAI parameters (e.g. reasoning_effort)
+            for key, value in model_config.items():
+                if key not in {"model", "stream"}:
+                    model_kwargs[key] = value
 
             api_kwargs = model.convert_inputs_to_api_kwargs(
                 input=prompt,
@@ -514,7 +511,7 @@ This file contains...
 
             model = BedrockClient()
             model_kwargs = {
-                "model": request.model,
+                "model": request.model or model_config["model"],
             }
 
             for key in ["temperature", "top_p"]:
@@ -532,7 +529,7 @@ This file contains...
             # Initialize Azure AI client
             model = AzureAIClient()
             model_kwargs = {
-                "model": request.model,
+                "model": request.model or model_config["model"],
                 "stream": True,
                 "temperature": model_config["temperature"],
                 "top_p": model_config["top_p"]
@@ -549,7 +546,7 @@ This file contains...
             # Initialize Dashscope client
             model = DashscopeClient()
             model_kwargs = {
-                "model": request.model,
+                "model": request.model or model_config["model"],
                 "stream": True,
                 "temperature": model_config["temperature"],
                 "top_p": model_config["top_p"]

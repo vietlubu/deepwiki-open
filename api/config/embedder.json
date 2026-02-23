@@ -1,10 +1,13 @@
 {
   "embedder": {
     "client_class": "OpenAIClient",
+    "initialize_kwargs": {
+      "api_key": "${EMBEDDING_OPENAI_API_KEY}",
+      "base_url": "${EMBEDDING_OPENAI_BASE_URL}"
+    },
     "batch_size": 500,
     "model_kwargs": {
-      "model": "text-embedding-3-small",
-      "dimensions": 256,
+      "model": "bge-m3:latest",
       "encoding_format": "float"
     }
   },
