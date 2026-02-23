@@ -73,8 +73,8 @@ DEEPWIKI_DEFAULT_MODEL=gpt-5.1-codex-mini
 # Cài đặt Python dependencies
 python -m pip install poetry==2.0.1 && poetry install -C api
 
-# Chạy API server
-poetry -C api run python -m api.main
+# Chạy API server (chạy từ thư mục gốc của project)
+$(poetry -C api env info --path)/bin/python -m api.main
 ```
 
 #### Bước 3: Bắt đầu với Frontend

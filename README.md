@@ -100,8 +100,8 @@ DEEPWIKI_DEFAULT_MODEL=gpt-5.1-codex-mini
 # Install Python dependencies
 python -m pip install poetry==2.0.1 && poetry install -C api
 
-# Start the API server
-poetry -C api run python -m api.main
+# Start the API server (run from the project root)
+$(poetry -C api env info --path)/bin/python -m api.main
 ```
 
 #### Step 3: Start the Frontend
