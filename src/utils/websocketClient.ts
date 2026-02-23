@@ -3,15 +3,11 @@
  * This replaces the HTTP streaming endpoint with a WebSocket connection
  */
 
-// Get the server base URL from environment or use default
-const SERVER_BASE_URL = process.env.SERVER_BASE_URL || 'http://localhost:8001';
+import { getClientWebSocketUrl } from '@/utils/wsUrl';
 
 // Convert HTTP URL to WebSocket URL
 const getWebSocketUrl = () => {
-  const baseUrl = SERVER_BASE_URL;
-  // Replace http:// with ws:// or https:// with wss://
-  const wsBaseUrl = baseUrl.replace(/^http/, 'ws');
-  return `${wsBaseUrl}/ws/chat`;
+  return getClientWebSocketUrl();
 };
 
 export interface ChatMessage {
