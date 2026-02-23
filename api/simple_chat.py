@@ -111,8 +111,21 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                 included_files = [unquote(file_pattern) for file_pattern in request.included_files.split('\n') if file_pattern.strip()]
                 logger.info(f"Using custom included files: {included_files}")
 
-            request_rag.prepare_retriever(request.repo_url, request.type, request.token, excluded_dirs, excluded_files, included_dirs, included_files)
-            logger.info(f"Retriever prepared for {request.repo_url}")
+            if input_too_large:
+                logger.info(
+                    "Skipping retriever preparation for large input; proceeding without retrieval context"
+                )
+            else:
+                request_rag.prepare_retriever(
+                    request.repo_url,
+                    request.type,
+                    request.token,
+                    excluded_dirs,
+                    excluded_files,
+                    included_dirs,
+                    included_files,
+                )
+                logger.info(f"Retriever prepared for {request.repo_url}")
         except ValueError as e:
             if "No valid documents with embeddings found" in str(e):
                 logger.error(f"No valid embeddings found: {str(e)}")
@@ -460,6 +473,10 @@ async def chat_completions_stream(request: ChatCompletionRequest):
         # Create a streaming response
         async def response_stream():
             try:
+                # Emit an early keepalive chunk so proxies/clients don't wait
+                # for the first model token before receiving response body bytes.
+                yield " "
+
                 if request.provider == "ollama":
                     # Get the response and handle it properly using the previously created api_kwargs
                     response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
