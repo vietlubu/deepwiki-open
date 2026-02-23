@@ -98,6 +98,100 @@ const hasLocalStorage = (): boolean => {
     && typeof localStorage.removeItem === 'function';
 };
 
+const MAX_FILE_TREE_LINES_FOR_STRUCTURE = 1800;
+const MAX_FILE_TREE_CHARS_FOR_STRUCTURE = 90000;
+const MAX_README_CHARS_FOR_STRUCTURE = 18000;
+
+const summarizeFileTreeForStructure = (fileTree: string): { text: string; truncated: boolean } => {
+  const lines = fileTree.split('\n').map(line => line.trim()).filter(Boolean);
+  if (lines.length === 0) {
+    return { text: '', truncated: false };
+  }
+
+  let truncated = false;
+
+  const rootLines = lines.filter(line => !line.includes('/')).slice(0, 120);
+  const priorityPatterns = [
+    /^(src|app|api|server|backend|frontend|lib|core|internal|cmd)\//i,
+    /(package\.json|pyproject\.toml|requirements\.txt|go\.mod|Cargo\.toml|pom\.xml|build\.gradle|composer\.json|README\.md)$/i,
+    /\.(ts|tsx|js|jsx|py|go|rs|java|kt|cs|cpp|c|h|hpp)$/i,
+  ];
+
+  const selected = new Set<string>();
+  const selectedLines: string[] = [];
+  let totalChars = 0;
+
+  const canTake = (line: string): boolean => {
+    return selectedLines.length < MAX_FILE_TREE_LINES_FOR_STRUCTURE
+      && (totalChars + line.length + 1) <= MAX_FILE_TREE_CHARS_FOR_STRUCTURE;
+  };
+
+  const tryTake = (line: string) => {
+    if (!selected.has(line) && canTake(line)) {
+      selected.add(line);
+      selectedLines.push(line);
+      totalChars += line.length + 1;
+    } else if (!selected.has(line)) {
+      truncated = true;
+    }
+  };
+
+  rootLines.forEach(tryTake);
+  for (const pattern of priorityPatterns) {
+    for (const line of lines) {
+      if (pattern.test(line)) {
+        tryTake(line);
+      }
+    }
+  }
+  for (const line of lines) {
+    tryTake(line);
+  }
+
+  if (selectedLines.length < lines.length) {
+    truncated = true;
+  }
+
+  return { text: selectedLines.join('\n'), truncated };
+};
+
+const summarizeReadmeForStructure = (readme: string): { text: string; truncated: boolean } => {
+  if (!readme) {
+    return { text: '', truncated: false };
+  }
+  if (readme.length <= MAX_README_CHARS_FOR_STRUCTURE) {
+    return { text: readme, truncated: false };
+  }
+  return {
+    text: readme.slice(0, MAX_README_CHARS_FOR_STRUCTURE),
+    truncated: true,
+  };
+};
+
+const decodeHtmlEntities = (value: string): string => {
+  if (typeof document === 'undefined') {
+    return value;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.innerHTML = value;
+  return textarea.value;
+};
+
+const extractWikiStructureXml = (responseText: string): string | null => {
+  const directMatch = responseText.match(/<wiki_structure\b[\s\S]*?<\/wiki_structure>/i);
+  if (directMatch) {
+    return directMatch[0];
+  }
+
+  const decoded = decodeHtmlEntities(responseText);
+  const decodedMatch = decoded.match(/<wiki_structure\b[\s\S]*?<\/wiki_structure>/i);
+  if (decodedMatch) {
+    return decodedMatch[0];
+  }
+
+  return null;
+};
+
 // Helper function to add tokens and other parameters to request body
 const addTokensToRequestBody = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -705,6 +799,8 @@ Remember:
 
       // Get repository URL
       const repoUrl = getRepoUrl(effectiveRepoInfo);
+      const summarizedTree = summarizeFileTreeForStructure(fileTree);
+      const summarizedReadme = summarizeReadmeForStructure(readme);
 
       // Prepare request body
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -715,15 +811,19 @@ Remember:
           role: 'user',
 content: `Analyze this GitHub repository ${owner}/${repo} and create a wiki structure for it.
 
-1. The complete file tree of the project:
+1. The file tree of the project:
 <file_tree>
-${fileTree}
+${summarizedTree.text}
 </file_tree>
+
+${summarizedTree.truncated ? 'NOTE: File tree was truncated for token limits. Focus on dominant architecture and key modules based on the provided paths.\n' : ''}
 
 2. The README file of the project:
 <readme>
-${readme}
+${summarizedReadme.text}
 </readme>
+
+${summarizedReadme.truncated ? 'NOTE: README content was truncated for token limits.\n' : ''}
 
 I want to create a wiki for this repository. Determine the most logical structure for a wiki based on the repository's content.
 
@@ -941,16 +1041,22 @@ IMPORTANT:
          throw new Error('The specified Ollama embedding model was not found. Please ensure the model is installed locally or select a different embedding model in the configuration.');
        }
 
-        // Clean up markdown delimiters
+      // Clean up markdown delimiters
       responseText = responseText.replace(/^```(?:xml)?\s*/i, '').replace(/```\s*$/i, '');
 
-      // Extract wiki structure from response
-      const xmlMatch = responseText.match(/<wiki_structure>[\s\S]*?<\/wiki_structure>/m);
-      if (!xmlMatch) {
-        throw new Error('No valid XML found in response');
+      if (/too large for me to process|token limit|maximum context length/i.test(responseText)) {
+        throw new Error('Repository context is too large for the model. Please narrow scope using include/exclude filters and try again.');
       }
 
-      let xmlText = xmlMatch[0];
+      // Extract wiki structure from response
+      const extractedXml = extractWikiStructureXml(responseText);
+      if (!extractedXml) {
+        const responsePreview = responseText.slice(0, 600).replace(/\s+/g, ' ');
+        console.error('Invalid wiki structure response preview:', responsePreview);
+        throw new Error('No valid XML found in response. Model did not return <wiki_structure> payload.');
+      }
+
+      let xmlText = extractedXml;
       xmlText = xmlText.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
       // Try parsing with DOMParser
       const parser = new DOMParser();
