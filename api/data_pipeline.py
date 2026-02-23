@@ -8,6 +8,7 @@ import tiktoken
 import logging
 import base64
 import glob
+import fnmatch
 from adalflow.utils import get_adalflow_default_root_path
 from adalflow.core.db import LocalDB
 from api.config import configs, DEFAULT_EXCLUDED_DIRS, DEFAULT_EXCLUDED_FILES
@@ -23,6 +24,24 @@ logger = logging.getLogger(__name__)
 
 # Maximum token limit for OpenAI embedding models
 MAX_EMBEDDING_TOKENS = 8192
+
+
+def get_token_encoding(embedder_type: str = None):
+    """
+    Return a tiktoken encoding suitable for the selected embedder.
+    """
+    # Determine embedder type if not specified
+    if embedder_type is None:
+        from api.config import get_embedder_type
+        embedder_type = get_embedder_type()
+
+    # Choose encoding based on embedder type
+    if embedder_type in ("ollama", "google", "bedrock"):
+        # Use cl100k for rough/token-safe splitting across providers
+        return tiktoken.get_encoding("cl100k_base")
+
+    # OpenAI/default
+    return tiktoken.encoding_for_model("text-embedding-3-small")
 
 def count_tokens(text: str, embedder_type: str = None, is_ollama_embedder: bool = None) -> int:
     """
@@ -43,24 +62,7 @@ def count_tokens(text: str, embedder_type: str = None, is_ollama_embedder: bool 
         if embedder_type is None and is_ollama_embedder is not None:
             embedder_type = 'ollama' if is_ollama_embedder else None
         
-        # Determine embedder type if not specified
-        if embedder_type is None:
-            from api.config import get_embedder_type
-            embedder_type = get_embedder_type()
-
-        # Choose encoding based on embedder type
-        if embedder_type == 'ollama':
-            # Ollama typically uses cl100k_base encoding
-            encoding = tiktoken.get_encoding("cl100k_base")
-        elif embedder_type == 'google':
-            # Google uses similar tokenization to GPT models for rough estimation
-            encoding = tiktoken.get_encoding("cl100k_base")
-        elif embedder_type == 'bedrock':
-            # Bedrock embedding models vary; use a common GPT-like encoding for rough estimation
-            encoding = tiktoken.get_encoding("cl100k_base")
-        else:  # OpenAI or default
-            # Use OpenAI embedding model encoding
-            encoding = tiktoken.encoding_for_model("text-embedding-3-small")
+        encoding = get_token_encoding(embedder_type)
 
         return len(encoding.encode(text))
     except Exception as e:
@@ -68,6 +70,32 @@ def count_tokens(text: str, embedder_type: str = None, is_ollama_embedder: bool 
         logger.warning(f"Error counting tokens with tiktoken: {e}")
         # Rough approximation: 4 characters per token
         return len(text) // 4
+
+
+def split_text_by_token_limit(text: str, token_limit: int, embedder_type: str = None):
+    """
+    Split text into chunks that are each <= token_limit tokens.
+    Falls back to approximate char-based splitting if tokenization fails.
+    """
+    if token_limit <= 0:
+        return [text]
+
+    try:
+        encoding = get_token_encoding(embedder_type)
+        token_ids = encoding.encode(text)
+        if len(token_ids) <= token_limit:
+            return [text]
+        return [
+            encoding.decode(token_ids[i:i + token_limit])
+            for i in range(0, len(token_ids), token_limit)
+        ]
+    except Exception as e:
+        logger.warning(f"Failed to split by tokens, falling back to char split: {e}")
+        approx_chars_per_token = 4
+        char_limit = token_limit * approx_chars_per_token
+        if len(text) <= char_limit:
+            return [text]
+        return [text[i:i + char_limit] for i in range(0, len(text), char_limit)]
 
 def download_repo(repo_url: str, local_path: str, repo_type: str = None, access_token: str = None) -> str:
     """
@@ -266,7 +294,11 @@ def read_all_documents(path: str, embedder_type: str = None, is_ollama_embedder:
             # Check if file matches included file patterns
             if not is_included and included_files:
                 for included_file in included_files:
-                    if file_name == included_file or file_name.endswith(included_file):
+                    if (
+                        file_name == included_file
+                        or file_name.endswith(included_file)
+                        or fnmatch.fnmatch(file_name, included_file)
+                    ):
                         is_included = True
                         break
 
@@ -295,7 +327,7 @@ def read_all_documents(path: str, embedder_type: str = None, is_ollama_embedder:
             # Check if file matches excluded file patterns
             if not is_excluded:
                 for excluded_file in excluded_files:
-                    if file_name == excluded_file:
+                    if file_name == excluded_file or fnmatch.fnmatch(file_name, excluded_file):
                         is_excluded = True
                         break
 
@@ -321,24 +353,37 @@ def read_all_documents(path: str, embedder_type: str = None, is_ollama_embedder:
                         and "test" not in relative_path.lower()
                     )
 
-                    # Check token count
+                    # Never skip oversized files; split them into token-safe parts.
                     token_count = count_tokens(content, embedder_type)
-                    if token_count > MAX_EMBEDDING_TOKENS * 10:
-                        logger.warning(f"Skipping large file {relative_path}: Token count ({token_count}) exceeds limit")
-                        continue
-
-                    doc = Document(
-                        text=content,
-                        meta_data={
-                            "file_path": relative_path,
-                            "type": ext[1:],
-                            "is_code": True,
-                            "is_implementation": is_implementation,
-                            "title": relative_path,
-                            "token_count": token_count,
-                        },
+                    content_parts = split_text_by_token_limit(
+                        content,
+                        token_limit=MAX_EMBEDDING_TOKENS,
+                        embedder_type=embedder_type,
                     )
-                    documents.append(doc)
+                    part_total = len(content_parts)
+                    if part_total > 1:
+                        logger.info(
+                            f"Splitting large code file {relative_path} into {part_total} parts "
+                            f"(total tokens: {token_count})"
+                        )
+
+                    for part_index, part_text in enumerate(content_parts, start=1):
+                        part_token_count = count_tokens(part_text, embedder_type)
+                        doc = Document(
+                            text=part_text,
+                            meta_data={
+                                "file_path": relative_path,
+                                "type": ext[1:],
+                                "is_code": True,
+                                "is_implementation": is_implementation,
+                                "title": relative_path if part_total == 1 else f"{relative_path} (part {part_index}/{part_total})",
+                                "token_count": part_token_count,
+                                "source_token_count": token_count,
+                                "chunk_index": part_index,
+                                "chunk_total": part_total,
+                            },
+                        )
+                        documents.append(doc)
             except Exception as e:
                 logger.error(f"Error reading {file_path}: {e}")
 
@@ -355,24 +400,37 @@ def read_all_documents(path: str, embedder_type: str = None, is_ollama_embedder:
                     content = f.read()
                     relative_path = os.path.relpath(file_path, path)
 
-                    # Check token count
+                    # Never skip oversized files; split them into token-safe parts.
                     token_count = count_tokens(content, embedder_type)
-                    if token_count > MAX_EMBEDDING_TOKENS:
-                        logger.warning(f"Skipping large file {relative_path}: Token count ({token_count}) exceeds limit")
-                        continue
-
-                    doc = Document(
-                        text=content,
-                        meta_data={
-                            "file_path": relative_path,
-                            "type": ext[1:],
-                            "is_code": False,
-                            "is_implementation": False,
-                            "title": relative_path,
-                            "token_count": token_count,
-                        },
+                    content_parts = split_text_by_token_limit(
+                        content,
+                        token_limit=MAX_EMBEDDING_TOKENS,
+                        embedder_type=embedder_type,
                     )
-                    documents.append(doc)
+                    part_total = len(content_parts)
+                    if part_total > 1:
+                        logger.info(
+                            f"Splitting large doc file {relative_path} into {part_total} parts "
+                            f"(total tokens: {token_count})"
+                        )
+
+                    for part_index, part_text in enumerate(content_parts, start=1):
+                        part_token_count = count_tokens(part_text, embedder_type)
+                        doc = Document(
+                            text=part_text,
+                            meta_data={
+                                "file_path": relative_path,
+                                "type": ext[1:],
+                                "is_code": False,
+                                "is_implementation": False,
+                                "title": relative_path if part_total == 1 else f"{relative_path} (part {part_index}/{part_total})",
+                                "token_count": part_token_count,
+                                "source_token_count": token_count,
+                                "chunk_index": part_index,
+                                "chunk_total": part_total,
+                            },
+                        )
+                        documents.append(doc)
             except Exception as e:
                 logger.error(f"Error reading {file_path}: {e}")
 
